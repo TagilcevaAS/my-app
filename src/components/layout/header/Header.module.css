@@ -1,0 +1,53 @@
+/*шапка*/
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #F5DEB3;
+    padding: 1.2rem 3rem 0.6rem;
+}
+
+/*размер окна поиска*/
+.header .image-wrapper {
+    width: 25%;
+}
+
+/*иконка*/
+.header .image-wrapper>img {
+    width: 40px;
+    height: 40px;
+}
+
+/*окно писка*/
+.header .wrapper {
+    margin-left: 16px;
+    width: calc(75% - 16px);
+    border-radius: 30px;
+    background-color: #f5e8d1;
+    position: relative;
+}
+
+/*текст поиска*/
+.header .wrapper>input {
+    width: 100%;
+    background-color: transparent;
+    border: none;
+    outline: none;
+    color: rgb(51, 49, 49);
+    font-size: 16px;
+    text-align: center;
+    padding: 10px;
+}
+
+/*цвет "Поиск"*/
+.header .wrapper>input::placeholder {
+    color: #ebbd69;
+}
+
+/*лупа*/
+.header .wrapper>svg {
+    fill: #f5d394 !important;
+    position: absolute;
+    top: 7px;
+    left: 45%;
+}
