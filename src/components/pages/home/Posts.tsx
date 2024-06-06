@@ -1,13 +1,12 @@
 import React, { FC, useEffect, useState } from 'react';
 import { IPost, IUser } from '../../../types';
-import { Avatar, Box, IconButton, ImageList, ImageListItem, Typography } from '@mui/material';
+import { Avatar, Alert, Box, IconButton, ImageList, ImageListItem, Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../providers/useAuth';
-import { collection, onSnapshot, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, query, where, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import Card from '../../ui/Card';
 import { Timestamp } from 'firebase/firestore';
 import CancelIcon from '@mui/icons-material/Cancel';
-import { doc, deleteDoc } from 'firebase/firestore';
 import EditIcon from '@mui/icons-material/Edit';
 
 import {
@@ -20,19 +19,26 @@ import {
     Button
 } from '@mui/material';
 
-const Posts: FC = () => {
+interface PostsProps {
+    tagFilter: string;
+    setTagFilter: React.Dispatch<React.SetStateAction<string>>;
+}
+
+const Posts: FC<PostsProps> = ({ tagFilter, setTagFilter }) => {
     /* Определены следующие состояния с помощью хука useState:
     1. posts: массив объектов типа IPost, инициализированный пустым массивом.
     2. editedContent: строка, инициализированная пустой строкой.
     3. isEditing: объект с двумя полями postId (строка или null) и content (строка), инициализированный с postId равным null и content равным пустой строке.
     4. openDialog: булево значение, инициализированное как false. */
     const { db } = useAuth();
+    const [error, setError] = useState('') // Отображение ошибок
+    const { user, ga } = useAuth() // Для получения данных о текущем пользователе
     const [posts, setPosts] = useState<IPost[]>([]);
     const [editedContent, setEditedContent] = useState('');
     const [isEditing, setIsEditing] = useState<{ postId: string | null, content: string }>({ postId: null, content: '' });
     const [openDialog, setOpenDialog] = useState(false);
-
-    const updatePostContent = async (postId: string, newContent: string) => { // Асинхронная функция для обновления контента поста. Принимает postId и newContent, пытается обновить содержимое поста в базе данных, ловит ошибки, если они возникают
+    // Асинхронная функция для обновления контента поста. Принимает postId и newContent, пытается обновить содержимое поста в базе данных, ловит ошибки, если они возникают
+    const updatePostContent = async (postId: string, newContent: string) => {
         try {
             await updateDoc(doc(db, 'posts', postId), {
                 content: newContent
@@ -41,26 +47,34 @@ const Posts: FC = () => {
             console.error('Error updating post content:', error);
         }
     };
-
-    const handleEditClick = (postId: string, content: string) => { // Функция для установки isEditing и открытия диалогового окна для редактирования контента поста. Принимает postId и content, устанавливает isEditing и открывает диалоговое окно
+    // Функция для установки isEditing и открытия диалогового окна для редактирования контента поста. Принимает postId и content, устанавливает isEditing и открывает диалоговое окно
+    const handleEditClick = (postId: string, content: string, userId?: string) => {
+        if (userId && userId !== user?._id) {
+            setError('Нельзя редактировать статью другого пользователя');
+            return;
+        }
         setIsEditing({ postId, content });
         setOpenDialog(true);
     };
-
-    const handleEditSave = async () => { // Асинхронная функция для сохранения изменений после редактирования. Если isEditing.postId существует, вызывает updatePostContent и сбрасывает isEditing после сохранения. Закрывает диалоговое окно
+    // Асинхронная функция для сохранения изменений после редактирования. Если isEditing.postId существует, вызывает updatePostContent и сбрасывает isEditing после сохранения. Закрывает диалоговое окно
+    const handleEditSave = async () => {
         if (isEditing.postId) {
             await updatePostContent(isEditing.postId, isEditing.content);
             setIsEditing({ postId: null, content: '' });
         }
         setOpenDialog(false);
     };
-
-    const handleEditCancel = () => { // Функция для отмены редактирования. Сбрасывает значения isEditing и закрывает диалоговое окно
+    // Функция для отмены редактирования. Сбрасывает значения isEditing и закрывает диалоговое окно
+    const handleEditCancel = () => {
         setIsEditing({ postId: null, content: '' });
         setOpenDialog(false);
     };
-
-    const deletePost = async (postId: string) => { // Асинхронная функция для удаления поста. Пытается удалить пост из базы данных, затем обновляет состояние posts, удаляя удаленный пост из массива
+    // Асинхронная функция для удаления поста. Пытается удалить пост из базы данных, затем обновляет состояние posts, удаляя удаленный пост из массива
+    const deletePost = async (postId: string, userId: string) => {
+        if (userId !== user?._id) {
+            setError('Нельзя удалять статью другого пользователя');
+            return;
+        }
         try {
             await deleteDoc(doc(db, 'posts', postId));
             setPosts((prevPosts) => prevPosts.filter((post) => post.id !== postId));
@@ -68,8 +82,12 @@ const Posts: FC = () => {
             console.error('Error deleting post:', error);
         }
     };
-
-    const editPost = async (postId: string) => { // Асинхронная функция для редактирования поста. Принимает postId, пытается обновить содержимое поста в базе данных, ловит ошибки, если они возникают
+    // Асинхронная функция для редактирования поста. Принимает postId, пытается обновить содержимое поста в базе данных, ловит ошибки, если они возникают
+    const editPost = async (postId: string, userId: string) => {
+        if (userId !== user?._id) {
+            console.log('You are not authorized to edit this post.');
+            return;
+        }
         try {
             await updateDoc(doc(db, 'posts', postId), {
                 content: editedContent
@@ -78,25 +96,33 @@ const Posts: FC = () => {
             console.error('Error updating post:', error);
         }
     };
-
-    useEffect(() => { // Хук, который подписывается на изменения в коллекции posts в базе данных db. При изменениях обновляет локальное состояние posts с данными из базы данных
+    // Хук, который подписывается на изменения в коллекции posts в базе данных db. При изменениях обновляет локальное состояние posts с данными из базы данных
+    useEffect(() => {
         const unsub = onSnapshot(collection(db, 'posts'), (snapshot) => {
             const postData: IPost[] = [];
             snapshot.forEach((doc) => {
-                postData.push({
+                const post = {
                     id: doc.id,
                     ...doc.data() as Omit<IPost, 'id'>
-                });
+                };
+                if (tagFilter === '' || post.tags.includes(tagFilter)) {
+                    postData.push(post);
+                }
             });
             setPosts(postData);
         });
         return () => {
             unsub();
         };
-    }, [db]);
+    }, [db, tagFilter]);
 
     return (
         <>
+            {error && (
+                <Alert severity='error' style={{ marginBottom: 20 }}>
+                    {error}
+                </Alert>
+            )}
             {posts.map((post, index) => (
                 <Card key={`Post-${index}`}>
                     <Box sx={{ position: 'relative' }}>
@@ -151,7 +177,23 @@ const Posts: FC = () => {
                                 wordWrap: 'break-word'
                             }}
                         >
-                            {post.content}
+                            <p>{post.content}</p>
+                            <div>
+                                {post.tags.map((tag, index) => (
+                                    <Box
+                                        key={index}
+                                        sx={{
+                                            display: 'inline-block',
+                                            border: '1px solid black',
+                                            borderRadius: '20px',
+                                            padding: '5px 10px',
+                                            margin: '5px'
+                                        }}
+                                    >
+                                        {tag}
+                                    </Box>
+                                ))}
+                            </div>
                         </Typography>
                         {post?.images?.length && (
                             <ImageList variant='masonry' cols={4} gap={4}>
@@ -167,7 +209,7 @@ const Posts: FC = () => {
                             </ImageList>
                         )}
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', marginTop: 1 }}>
-                            <IconButton onClick={() => handleEditClick(post.id, post.content)} sx={{ position: 'absolute', top: 8, left: 780 }}>
+                            <IconButton onClick={() => handleEditClick(post.id, post.content, post.author._id)} sx={{ position: 'absolute', top: 8, left: 780 }}>
                                 <EditIcon />
                             </IconButton>
                             <Dialog open={openDialog} onClose={handleEditCancel}>
@@ -194,7 +236,7 @@ const Posts: FC = () => {
                                 </DialogActions>
                             </Dialog>
                             <IconButton
-                                onClick={() => deletePost(post.id)}
+                                onClick={() => deletePost(post.id, post.author._id)} // Pass the postId and userId
                                 sx={{ position: 'absolute', top: 8, right: 8 }}
                             >
                                 <CancelIcon />
